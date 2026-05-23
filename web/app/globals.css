@@ -334,10 +334,19 @@ h2 { font-size: 14px; font-weight: 600; margin: 28px 0 12px; color: var(--muted)
   background: rgba(240,180,41,0.16);
   color: var(--warn);
   font-weight: 600;
-  padding: 2px 10px;
+  padding: 3px 11px;
   border-radius: 4px;
-  text-transform: lowercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+.narrative-emoji { font-size: 14px; }
+.narratives-empty {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 6px 4px;
 }
 .narrative-arrow { color: var(--muted); }
 .narrative-tickers { display: inline-flex; gap: 4px; flex-wrap: wrap; }

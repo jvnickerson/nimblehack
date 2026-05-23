@@ -2,7 +2,7 @@
 import dynamic from "next/dynamic";
 import { useMemo, useRef, useEffect, useState } from "react";
 import type { Signal } from "@/lib/ch";
-import { tokenize } from "@/lib/themes";
+import { NARRATIVES } from "@/lib/themes";
 
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), { ssr: false });
 
@@ -29,6 +29,11 @@ const SOURCE_COLORS: Record<string, string> = {
   sec_10Q: "#ffb86c",
 };
 
+function matchedNarratives(text: string) {
+  const lower = " " + text.toLowerCase() + " ";
+  return NARRATIVES.filter((n) => n.triggers.some((t) => lower.includes(t)));
+}
+
 function buildGraph(signals: Signal[]): { nodes: GNode[]; links: GLink[] } {
   const tickers = new Set<string>();
   for (const s of signals) tickers.add(s.ticker);
@@ -47,7 +52,8 @@ function buildGraph(signals: Signal[]): { nodes: GNode[]; links: GLink[] } {
     });
   }
 
-  // Signal nodes + ticker links
+  // Signal nodes + ticker links + narrative matching
+  const themeToTickers = new Map<string, { label: string; emoji?: string; tickers: Set<string> }>();
   const seenSig = new Set<string>();
   for (const s of signals) {
     const sid = `S:${s.ticker}:${s.headline.slice(0, 50)}`;
@@ -67,27 +73,30 @@ function buildGraph(signals: Signal[]): { nodes: GNode[]; links: GLink[] } {
       fresh,
     });
     links.push({ source: `T:${s.ticker}`, target: sid });
-  }
 
-  // Theme nodes: only words that appear across 2+ tickers (real cross-narrative)
-  const themeToTickers = new Map<string, Set<string>>();
-  for (const s of signals) {
-    const toks = new Set(tokenize(s.headline + " " + (s.summary ?? "")));
-    for (const t of toks) {
-      if (!themeToTickers.has(t)) themeToTickers.set(t, new Set());
-      themeToTickers.get(t)!.add(s.ticker);
+    // Curated narrative matches — only real stories surface as theme nodes
+    const hits = matchedNarratives(s.headline + " " + (s.summary ?? ""));
+    for (const n of hits) {
+      let entry = themeToTickers.get(n.label);
+      if (!entry) {
+        entry = { label: n.label, emoji: n.emoji, tickers: new Set() };
+        themeToTickers.set(n.label, entry);
+      }
+      entry.tickers.add(s.ticker);
     }
   }
-  for (const [theme, tset] of themeToTickers) {
-    if (tset.size < 2) continue;
+
+  // Theme nodes for curated narratives spanning 2+ tickers
+  for (const [label, e] of themeToTickers) {
+    if (e.tickers.size < 2) continue;
     nodes.push({
-      id: `M:${theme}`,
+      id: `M:${label}`,
       kind: "theme",
-      label: theme,
-      size: 6 + Math.min(8, tset.size * 2),
+      label: e.emoji ? `${e.emoji} ${label}` : label,
+      size: 10 + Math.min(10, e.tickers.size * 2),
       color: THEME_COLOR,
     });
-    for (const t of tset) links.push({ source: `T:${t}`, target: `M:${theme}` });
+    for (const t of e.tickers) links.push({ source: `T:${t}`, target: `M:${label}` });
   }
 
   return { nodes, links };

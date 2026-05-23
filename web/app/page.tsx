@@ -141,13 +141,16 @@ export default async function Home() {
 
         {graphSignals.length > 0 && <NarrativeGraph signals={graphSignals} />}
 
-        {themes.length > 0 && (
+        {themes.length > 0 ? (
           <div className="narratives-callout">
-            <div className="narratives-label">🌀 Diverging narratives — themes spanning multiple tickers (last 6h)</div>
+            <div className="narratives-label">🌀 Diverging narratives — stories spanning multiple tickers (last 6h)</div>
             <div className="narratives-list">
               {themes.map((t) => (
                 <div key={t.theme} className="narrative-row">
-                  <span className="narrative-theme">{t.theme}</span>
+                  <span className="narrative-theme">
+                    {t.emoji && <span className="narrative-emoji">{t.emoji}</span>}
+                    {t.theme}
+                  </span>
                   <span className="narrative-arrow">·</span>
                   <span className="narrative-tickers">
                     {t.tickers.map((tk) => (
@@ -157,6 +160,13 @@ export default async function Home() {
                   <span className="narrative-count">{t.signals} signals</span>
                 </div>
               ))}
+            </div>
+          </div>
+        ) : graphSignals.length > 0 && (
+          <div className="narratives-callout">
+            <div className="narratives-label">🌀 Diverging narratives</div>
+            <div className="narratives-empty">
+              No cross-ticker narratives surfaced yet. The dictionary watches for tariffs, antitrust, EU regulation, AI infrastructure, layoffs, M&A, insider activity, and 12 more — they&apos;ll appear here as triggering headlines arrive.
             </div>
           </div>
         )}
