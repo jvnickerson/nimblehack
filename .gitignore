@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+.env.local
+.nimble/
+node_modules/
+.next/
+.DS_Store
+*.log
