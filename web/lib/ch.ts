@@ -75,7 +75,7 @@ export async function tickerSummary(): Promise<TickerSummary[]> {
         ticker,
         count() AS total,
         countIf(first_seen_at >= now() - INTERVAL 24 HOUR) AS fresh_24h,
-        countIf(first_seen_at >= now() - INTERVAL 1 HOUR) AS fresh_1h,
+        countIf(first_seen_at >= now() - INTERVAL 5 MINUTE) AS fresh_1h,
         uniqExact(source) AS sources,
         toString(max(first_seen_at)) AS latest
       FROM signals
@@ -85,4 +85,32 @@ export async function tickerSummary(): Promise<TickerSummary[]> {
     format: "JSONEachRow",
   });
   return (await resp.json()) as TickerSummary[];
+}
+
+export type IndexStats = {
+  total: number;
+  embedded: number;
+  pct: number;
+  sources: number;
+  signals_5min: number;
+};
+
+export async function indexStats(): Promise<IndexStats> {
+  const resp = await ch().query({
+    query: `
+      SELECT
+        count() AS total,
+        countIf(length(embedding) > 0) AS embedded,
+        uniqExact(source) AS sources,
+        countIf(first_seen_at >= now() - INTERVAL 5 MINUTE) AS signals_5min
+      FROM signals
+    `,
+    format: "JSONEachRow",
+  });
+  const rows = (await resp.json()) as Array<{
+    total: number; embedded: number; sources: number; signals_5min: number;
+  }>;
+  const r = rows[0] ?? { total: 0, embedded: 0, sources: 0, signals_5min: 0 };
+  const pct = r.total > 0 ? Math.round((Number(r.embedded) / Number(r.total)) * 100) : 0;
+  return { ...r, pct };
 }
