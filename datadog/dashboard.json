@@ -1,0 +1,147 @@
+{
+  "title": "Nimblehack — Weekend Signal Agent",
+  "description": "Live monitoring of the autonomous Nimble → ClickHouse signal pump. Built for the Datadog hackathon.",
+  "layout_type": "ordered",
+  "is_read_only": false,
+  "notify_list": [],
+  "template_variables": [],
+  "widgets": [
+    {
+      "definition": {
+        "title": "Signals ingested · last 1 min",
+        "type": "query_value",
+        "requests": [
+          {
+            "q": "sum:nimblehack.signals.new{*}.as_count()",
+            "aggregator": "sum",
+            "conditional_formats": [
+              { "comparator": ">", "value": 0, "palette": "white_on_green" },
+              { "comparator": "<=", "value": 0, "palette": "white_on_red" }
+            ]
+          }
+        ],
+        "autoscale": true,
+        "precision": 0,
+        "time": { "live_span": "1m" }
+      }
+    },
+    {
+      "definition": {
+        "title": "Signals ingested · last 5 min",
+        "type": "query_value",
+        "requests": [
+          { "q": "sum:nimblehack.signals.new{*}.as_count()", "aggregator": "sum" }
+        ],
+        "autoscale": true,
+        "precision": 0,
+        "time": { "live_span": "5m" }
+      }
+    },
+    {
+      "definition": {
+        "title": "Reddit posts scanned per pull",
+        "type": "query_value",
+        "requests": [
+          { "q": "avg:nimblehack.reddit.posts_seen{*}", "aggregator": "avg" }
+        ],
+        "autoscale": true,
+        "precision": 0,
+        "time": { "live_span": "5m" }
+      }
+    },
+    {
+      "definition": {
+        "title": "Errors · last 5 min",
+        "type": "query_value",
+        "requests": [
+          {
+            "q": "sum:nimblehack.errors{*}.as_count()",
+            "aggregator": "sum",
+            "conditional_formats": [
+              { "comparator": ">", "value": 0, "palette": "white_on_red" },
+              { "comparator": "<=", "value": 0, "palette": "white_on_green" }
+            ]
+          }
+        ],
+        "autoscale": true,
+        "precision": 0,
+        "time": { "live_span": "5m" }
+      }
+    },
+    {
+      "definition": {
+        "title": "Signals/min by source",
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "sum:nimblehack.signals.new{*} by {source}.as_rate()",
+            "display_type": "area",
+            "style": { "palette": "dog_classic", "line_type": "solid", "line_width": "normal" }
+          }
+        ],
+        "show_legend": true,
+        "legend_layout": "auto",
+        "time": { "live_span": "30m" }
+      }
+    },
+    {
+      "definition": {
+        "title": "Top tickers · last 1 hour",
+        "type": "toplist",
+        "requests": [
+          {
+            "q": "top(sum:nimblehack.signals.new{*} by {ticker}.as_count(), 10, 'sum', 'desc')"
+          }
+        ],
+        "time": { "live_span": "1h" }
+      }
+    },
+    {
+      "definition": {
+        "title": "Top sources · last 1 hour",
+        "type": "toplist",
+        "requests": [
+          {
+            "q": "top(sum:nimblehack.signals.new{*} by {source}.as_count(), 10, 'sum', 'desc')"
+          }
+        ],
+        "time": { "live_span": "1h" }
+      }
+    },
+    {
+      "definition": {
+        "title": "Poll duration (p50 / p95)",
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "p50:nimblehack.poll.duration_ms{*} by {tier}",
+            "display_type": "line",
+            "style": { "palette": "cool", "line_type": "solid", "line_width": "thin" }
+          },
+          {
+            "q": "p95:nimblehack.poll.duration_ms{*} by {tier}",
+            "display_type": "line",
+            "style": { "palette": "warm", "line_type": "dashed", "line_width": "thin" }
+          }
+        ],
+        "show_legend": true,
+        "time": { "live_span": "30m" }
+      }
+    },
+    {
+      "definition": {
+        "title": "Duplicates filtered (dedup at work)",
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "sum:nimblehack.signals.duplicate{*}.as_count()",
+            "display_type": "bars",
+            "style": { "palette": "grey", "line_type": "solid", "line_width": "normal" }
+          }
+        ],
+        "show_legend": false,
+        "time": { "live_span": "30m" }
+      }
+    }
+  ]
+}

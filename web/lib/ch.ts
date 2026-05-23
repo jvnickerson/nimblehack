@@ -56,8 +56,8 @@ export async function recentSignals(opts: {
   const resp = await ch().query({
     query: `
       SELECT ticker, source, headline, summary, url, event_type,
-             toString(first_seen_at) AS first_seen_at,
-             toString(fetched_at) AS fetched_at
+             formatDateTime(first_seen_at, '%Y-%m-%dT%H:%i:%SZ') AS fseen,
+             formatDateTime(fetched_at,    '%Y-%m-%dT%H:%i:%SZ') AS ffetched
       FROM signals ${where}
       ORDER BY first_seen_at DESC
       LIMIT ${limit}
@@ -65,7 +65,17 @@ export async function recentSignals(opts: {
     format: "JSONEachRow",
     query_params: params,
   });
-  return (await resp.json()) as Signal[];
+  const raw = (await resp.json()) as Array<Record<string, unknown>>;
+  return raw.map((r) => ({
+    ticker: String(r.ticker),
+    source: String(r.source),
+    headline: String(r.headline ?? ""),
+    summary: String(r.summary ?? ""),
+    url: String(r.url ?? ""),
+    event_type: String(r.event_type ?? ""),
+    first_seen_at: String(r.fseen ?? ""),
+    fetched_at: String(r.ffetched ?? ""),
+  }));
 }
 
 export async function tickerSummary(): Promise<TickerSummary[]> {
@@ -85,6 +95,81 @@ export async function tickerSummary(): Promise<TickerSummary[]> {
     format: "JSONEachRow",
   });
   return (await resp.json()) as TickerSummary[];
+}
+
+export type SentimentRow = { ticker: string; pos: number; neg: number; score: number };
+
+const POS_TERMS = [
+  "surge", "soar", "soared", "soars", "rally", "rallies", "rallied",
+  "beat", "beats", "beating", "raised", "raise", "raises",
+  "record", "strong", "growth", "growing", "gain", "gains", "jump", "jumps",
+  "bullish", "outperform", "upgrade", "upgrades", "win", "wins", "won",
+  "exceed", "exceeded", "exceeds", "boost", "boosts", "boosted",
+  "approve", "approved", "approval", "launch", "launches", "launched",
+];
+const NEG_TERMS = [
+  "drop", "drops", "dropped", "fall", "falls", "fell", "crash", "crashed",
+  "miss", "missed", "misses", "cut", "cuts", "slash", "slashed",
+  "weak", "loss", "losses", "plunge", "plunged", "plunges",
+  "decline", "declines", "declined", "sue", "sues", "sued", "lawsuit",
+  "layoff", "layoffs", "fire", "fired", "fires", "down", "downgrade", "downgrades",
+  "warning", "warns", "warned", "probe", "probes", "investigation", "fraud",
+  "disappoint", "disappointed", "disappoints",
+];
+
+function sqlArrayLit(terms: string[]): string {
+  return "[" + terms.map((t) => `'${t.replace(/'/g, "''")}'`).join(",") + "]";
+}
+
+export async function sentimentByTicker(): Promise<Record<string, SentimentRow>> {
+  const resp = await ch().query({
+    query: `
+      SELECT
+        ticker,
+        countIf(multiSearchAnyCaseInsensitive(concat(headline, ' ', summary), ${sqlArrayLit(POS_TERMS)}) > 0) AS pos,
+        countIf(multiSearchAnyCaseInsensitive(concat(headline, ' ', summary), ${sqlArrayLit(NEG_TERMS)}) > 0) AS neg
+      FROM signals
+      WHERE first_seen_at >= now() - INTERVAL 1 HOUR
+      GROUP BY ticker
+    `,
+    format: "JSONEachRow",
+  });
+  const rows = (await resp.json()) as Array<{ ticker: string; pos: number; neg: number }>;
+  const out: Record<string, SentimentRow> = {};
+  for (const r of rows) {
+    const pos = Number(r.pos);
+    const neg = Number(r.neg);
+    const total = pos + neg;
+    const score = total === 0 ? 0 : (pos - neg) / total;
+    out[r.ticker] = { ticker: r.ticker, pos, neg, score };
+  }
+  return out;
+}
+
+export async function recentRedditSignals(limit = 30): Promise<Signal[]> {
+  const resp = await ch().query({
+    query: `
+      SELECT ticker, source, headline, summary, url, event_type,
+             formatDateTime(first_seen_at, '%Y-%m-%dT%H:%i:%SZ') AS fseen,
+             formatDateTime(fetched_at,    '%Y-%m-%dT%H:%i:%SZ') AS ffetched
+      FROM signals
+      WHERE source = 'reddit' AND first_seen_at >= now() - INTERVAL 30 MINUTE
+      ORDER BY first_seen_at DESC
+      LIMIT ${limit}
+    `,
+    format: "JSONEachRow",
+  });
+  const raw = (await resp.json()) as Array<Record<string, unknown>>;
+  return raw.map((r) => ({
+    ticker: String(r.ticker),
+    source: String(r.source),
+    headline: String(r.headline ?? ""),
+    summary: String(r.summary ?? ""),
+    url: String(r.url ?? ""),
+    event_type: String(r.event_type ?? ""),
+    first_seen_at: String(r.fseen ?? ""),
+    fetched_at: String(r.ffetched ?? ""),
+  }));
 }
 
 export type IndexStats = {

@@ -308,3 +308,166 @@ h2 { font-size: 14px; font-weight: 600; margin: 28px 0 12px; color: var(--muted)
   font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
   margin-right: 8px;
 }
+
+/* Diverging-narratives callout under the graph */
+.narratives-callout {
+  background: linear-gradient(180deg, rgba(240,180,41,0.07), rgba(240,180,41,0.02));
+  border: 1px solid rgba(240,180,41,0.32);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 8px;
+}
+.narratives-label {
+  font-size: 12px;
+  color: var(--warn);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.narratives-list { display: flex; flex-direction: column; gap: 6px; }
+.narrative-row {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 13px; flex-wrap: wrap;
+}
+.narrative-theme {
+  background: rgba(240,180,41,0.16);
+  color: var(--warn);
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 4px;
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+}
+.narrative-arrow { color: var(--muted); }
+.narrative-tickers { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.narrative-ticker {
+  background: var(--panel-2);
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  letter-spacing: 0.04em;
+}
+.narrative-count {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Dual-pane: main content + reddit side panel */
+.dual-pane {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 22px;
+  margin-top: 20px;
+}
+@media (max-width: 960px) {
+  .dual-pane { grid-template-columns: 1fr; }
+}
+.pane-main { min-width: 0; }
+.pane-side h2 { margin-top: 8px; }
+
+/* Sentiment chip on watchlist cards */
+.ticker-row { display: flex; align-items: center; justify-content: space-between; }
+.sentiment-chip {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+.sentiment-chip.pos { background: rgba(124,227,139,0.18); color: var(--accent); }
+.sentiment-chip.neg { background: rgba(248,113,113,0.18); color: #f87171; }
+.card .stat .l { letter-spacing: 0.06em; }
+
+/* Reddit panel */
+.reddit-header {
+  display: flex; align-items: center; gap: 8px;
+  margin: 8px 0 10px !important;
+}
+.dot-live {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #ff7a59;
+  animation: pulse 1.3s ease-in-out infinite;
+}
+.reddit-count {
+  margin-left: auto;
+  background: var(--panel-2);
+  color: var(--accent);
+  padding: 1px 9px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.reddit-feed {
+  display: flex; flex-direction: column; gap: 7px;
+  max-height: 720px; overflow-y: auto;
+  padding-right: 4px;
+}
+.reddit-empty {
+  background: var(--panel);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+.reddit-item {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid #ff7a59;
+  border-radius: 6px;
+  padding: 8px 11px;
+}
+.reddit-top {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 4px;
+  font-size: 11px;
+}
+.reddit-top .ticker { color: var(--accent); font-weight: 700; letter-spacing: 0.04em; }
+.reddit-time {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+}
+.reddit-headline { font-size: 13px; line-height: 1.4; }
+.reddit-headline a { color: var(--text); }
+.reddit-headline a:hover { color: var(--new); }
+
+/* Narrative graph */
+.graph-card {
+  background: #0e1420;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin: 24px 0 8px;
+  overflow: hidden;
+}
+.graph-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.graph-title { font-weight: 600; font-size: 13px; color: var(--text); letter-spacing: 0.02em; }
+.graph-sub { color: var(--muted); font-size: 12px; margin-left: 10px; }
+.graph-legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--muted); align-items: center; }
+.graph-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.graph-legend i {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+}
+.legend-count { color: var(--text); font-variant-numeric: tabular-nums; }
+.graph-canvas { width: 100%; }
+.graph-canvas canvas { display: block; }

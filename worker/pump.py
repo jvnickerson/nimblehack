@@ -29,9 +29,35 @@ from pathlib import Path
 
 import clickhouse_connect
 
+# Datadog statsd — sends to the local agent on 127.0.0.1:8125 (default).
+# Wrapped so the worker keeps running even if the agent isn't installed.
+DD_ENABLED = False
+try:
+    from datadog import initialize as _dd_init, statsd as _dd_statsd
+    _dd_init(statsd_host=os.environ.get("DD_STATSD_HOST", "127.0.0.1"),
+             statsd_port=int(os.environ.get("DD_STATSD_PORT", "8125")))
+    DD_ENABLED = True
+except Exception as _e:
+    print(f"[boot] datadog statsd disabled ({_e})")
+
+def dd_incr(metric, value=1, tags=None):
+    if DD_ENABLED:
+        try: _dd_statsd.increment(metric, value=value, tags=tags or [])
+        except Exception: pass
+
+def dd_gauge(metric, value, tags=None):
+    if DD_ENABLED:
+        try: _dd_statsd.gauge(metric, value, tags=tags or [])
+        except Exception: pass
+
+def dd_hist(metric, value, tags=None):
+    if DD_ENABLED:
+        try: _dd_statsd.histogram(metric, value, tags=tags or [])
+        except Exception: pass
+
 ROOT = Path(__file__).resolve().parent.parent
 TICKERS_FILE = ROOT / "tickers.json"
-FAST_INTERVAL = int(os.environ.get("FAST_INTERVAL_SEC", "30"))
+FAST_INTERVAL = int(os.environ.get("FAST_INTERVAL_SEC", "15"))
 SLOW_INTERVAL = int(os.environ.get("SLOW_INTERVAL_SEC", "300"))
 CLIENT_SOURCE = "skill-nimblehack-pump"
 REDDIT_SUBS = [s.strip() for s in os.environ.get(
@@ -95,11 +121,16 @@ def fetch_reddit_signals(tickers):
     """Pull from all configured subs, attribute to tickers, return rows."""
     rows_by_ticker = {t: [] for t in tickers}
     for sub in REDDIT_SUBS:
+        t0 = time.time()
         try:
             posts = reddit_subreddit_new(sub)
         except Exception as e:
             print(f"[err] reddit/{sub}: {e}")
+            dd_incr("nimblehack.errors", tags=[f"source:reddit", f"subreddit:{sub}"])
             continue
+        dd_hist("nimblehack.fetch.duration_ms", (time.time() - t0) * 1000,
+                tags=[f"source:reddit", f"subreddit:{sub}"])
+        dd_gauge("nimblehack.reddit.posts_seen", len(posts), tags=[f"subreddit:{sub}"])
         for p in posts:
             for t in attribute_tickers(p, tickers):
                 rows_by_ticker[t].append({
@@ -232,15 +263,19 @@ def build_batch(rows_by_ticker, seen, fetched):
     batch = []
     for ticker, rows in rows_by_ticker.items():
         new_count = 0
+        dup_count = 0
+        by_source_new = {}
         for r in rows:
             headline = (r["headline"] or "").strip()
             if not headline:
                 continue
             h = hash_id(headline)
             if h in seen.get(ticker, set()):
+                dup_count += 1
                 continue
             seen.setdefault(ticker, set()).add(h)
             new_count += 1
+            by_source_new[r["source"]] = by_source_new.get(r["source"], 0) + 1
             batch.append((
                 ticker, r["source"], r["source_id"],
                 headline, r["summary"] or "", r["url"] or "",
@@ -250,6 +285,10 @@ def build_batch(rows_by_ticker, seen, fetched):
             ))
         if new_count:
             print(f"[new] {ticker}: +{new_count}")
+        for src, n in by_source_new.items():
+            dd_incr("nimblehack.signals.new", value=n, tags=[f"ticker:{ticker}", f"source:{src}"])
+        if dup_count:
+            dd_incr("nimblehack.signals.duplicate", value=dup_count, tags=[f"ticker:{ticker}"])
     return batch
 
 
@@ -261,25 +300,35 @@ def insert(ch, batch):
 
 
 def poll_fast(ch, tickers, seen):
+    t0 = time.time()
     fetched = now_utc()
     rows_by_ticker = fetch_reddit_signals(tickers)
     n = insert(ch, build_batch(rows_by_ticker, seen, fetched))
+    dd_hist("nimblehack.poll.duration_ms", (time.time() - t0) * 1000, tags=["tier:fast"])
+    dd_gauge("nimblehack.poll.inserted", n, tags=["tier:fast"])
     print(f"[fast] inserted {n} reddit signals")
     return n
 
 
 def poll_slow(ch, tickers, seen):
+    t0 = time.time()
     fetched = now_utc()
     rows_by_ticker = {t: [] for t in tickers}
     for ticker in tickers:
         for source_name, fn in SLOW_SOURCES:
+            ts0 = time.time()
             try:
                 rows = fn(ticker)
                 rows_by_ticker[ticker].extend(rows)
+                dd_hist("nimblehack.fetch.duration_ms", (time.time() - ts0) * 1000,
+                        tags=[f"source:{source_name}", f"ticker:{ticker}"])
                 print(f"[slow] {ticker}/{source_name}: {len(rows)}")
             except Exception as e:
                 print(f"[err] {ticker}/{source_name}: {e}")
+                dd_incr("nimblehack.errors", tags=[f"source:{source_name}", f"ticker:{ticker}"])
     n = insert(ch, build_batch(rows_by_ticker, seen, fetched))
+    dd_hist("nimblehack.poll.duration_ms", (time.time() - t0) * 1000, tags=["tier:slow"])
+    dd_gauge("nimblehack.poll.inserted", n, tags=["tier:slow"])
     print(f"[slow] inserted {n} nimble signals")
     return n
 

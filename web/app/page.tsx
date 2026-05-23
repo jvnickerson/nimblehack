@@ -1,6 +1,18 @@
-import { recentSignals, tickerSummary, indexStats, type Signal, type TickerSummary, type IndexStats } from "@/lib/ch";
+import {
+  recentSignals,
+  tickerSummary,
+  indexStats,
+  sentimentByTicker,
+  recentRedditSignals,
+  type Signal,
+  type TickerSummary,
+  type IndexStats,
+  type SentimentRow,
+} from "@/lib/ch";
+import { crossTickerThemes } from "@/lib/themes";
 import { AutoRefresh } from "./auto-refresh";
 import { UnlockButton } from "./unlock-button";
+import { NarrativeGraph } from "./narrative-graph";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -16,32 +28,61 @@ function fmtTime(iso: string): string {
   return d.toLocaleString();
 }
 
+function fmtTimeSeconds(iso: string): string {
+  const d = new Date(iso.endsWith("Z") ? iso : iso + "Z");
+  const diff = Math.max(0, (Date.now() - d.getTime()) / 1000);
+  if (diff < 90) return `${Math.floor(diff)}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ${Math.floor(diff % 60)}s ago`;
+  return `${Math.floor(diff / 3600)}h ago`;
+}
+
 function isFresh(iso: string, minutes = FRESH_MINUTES): boolean {
   const d = new Date(iso.endsWith("Z") ? iso : iso + "Z");
-  return (Date.now() - d.getTime()) < minutes * 60 * 1000;
+  return Date.now() - d.getTime() < minutes * 60 * 1000;
+}
+
+function sentimentBorder(score: number): string {
+  if (score === 0) return "var(--border)";
+  const t = Math.min(1, Math.abs(score));
+  return score > 0
+    ? `rgba(124, 227, 139, ${0.35 + t * 0.55})`
+    : `rgba(248, 113, 113, ${0.35 + t * 0.55})`;
+}
+
+function sentimentLabel(s: SentimentRow | undefined): string {
+  if (!s || s.pos + s.neg === 0) return "—";
+  const pct = Math.round(s.score * 100);
+  if (pct > 0) return `+${pct}`;
+  return String(pct);
 }
 
 export default async function Home() {
   let summary: TickerSummary[] = [];
   let signals: Signal[] = [];
   let stats: IndexStats | null = null;
+  let graphSignals: Signal[] = [];
+  let sentiments: Record<string, SentimentRow> = {};
+  let redditSignals: Signal[] = [];
   let error: string | null = null;
   try {
-    [summary, signals, stats] = await Promise.all([
+    [summary, signals, stats, graphSignals, sentiments, redditSignals] = await Promise.all([
       tickerSummary(),
-      recentSignals({ limit: 80 }),
+      recentSignals({ limit: 60 }),
       indexStats(),
+      recentSignals({ sinceMinutes: 360, limit: 250 }),
+      sentimentByTicker(),
+      recentRedditSignals(30),
     ]);
   } catch (e: any) {
     error = e?.message ?? String(e);
   }
 
-  // Ticker tape: top 18 most recent, duplicated for seamless loop
+  const themes = crossTickerThemes(graphSignals, 4);
   const tape = signals.slice(0, 18);
 
   return (
     <>
-      <AutoRefresh intervalMs={10000} />
+      <AutoRefresh intervalMs={5000} />
 
       {tape.length > 0 && (
         <div className="ticker-tape">
@@ -60,7 +101,7 @@ export default async function Home() {
       <main>
         <div className="header-row">
           <h1><span className="pulse" />Weekend Signal Agent</h1>
-          <span className="subtle">Open-web monitoring · auto-refresh 10s · poll 30s</span>
+          <span className="subtle">Open-web monitoring · auto-refresh 5s · poll 15s</span>
         </div>
 
         {stats && (
@@ -89,9 +130,6 @@ export default async function Home() {
           <div className="empty">
             <strong>Can&apos;t reach ClickHouse.</strong>
             <div style={{ marginTop: 8, fontSize: 12 }}>{error}</div>
-            <div style={{ marginTop: 8, fontSize: 12 }}>
-              Set <code>CH_HOST</code>, <code>CH_USER</code>, <code>CH_PWD</code> and run <code>schema.sql</code>.
-            </div>
           </div>
         )}
 
@@ -101,56 +139,117 @@ export default async function Home() {
           </div>
         )}
 
-        {summary.length > 0 && (
-          <>
-            <h2>Watchlist</h2>
-            <div className="grid">
-              {summary.map((t) => (
-                <div key={t.ticker} className="card">
-                  <div className="ticker">{t.ticker}</div>
-                  <div className="stat-row">
-                    <div className="stat">
-                      <div className={`v ${Number(t.fresh_1h) > 0 ? "hot" : ""}`}>{t.fresh_1h}</div>
-                      <div className="l">5 min</div>
-                    </div>
-                    <div className="stat">
-                      <div className="v">{t.fresh_24h}</div>
-                      <div className="l">24h</div>
-                    </div>
-                    <div className="stat">
-                      <div className="v">{t.sources}</div>
-                      <div className="l">sources</div>
-                    </div>
-                  </div>
-                  <div className="subtle" style={{ marginTop: 8, fontSize: 11 }}>
-                    latest: {t.latest ? fmtTime(t.latest) : "—"}
-                  </div>
-                  <UnlockButton ticker={t.ticker} />
+        {graphSignals.length > 0 && <NarrativeGraph signals={graphSignals} />}
+
+        {themes.length > 0 && (
+          <div className="narratives-callout">
+            <div className="narratives-label">🌀 Diverging narratives — themes spanning multiple tickers (last 6h)</div>
+            <div className="narratives-list">
+              {themes.map((t) => (
+                <div key={t.theme} className="narrative-row">
+                  <span className="narrative-theme">{t.theme}</span>
+                  <span className="narrative-arrow">·</span>
+                  <span className="narrative-tickers">
+                    {t.tickers.map((tk) => (
+                      <span key={tk} className="narrative-ticker">{tk}</span>
+                    ))}
+                  </span>
+                  <span className="narrative-count">{t.signals} signals</span>
                 </div>
               ))}
             </div>
+          </div>
+        )}
 
-            <h2>Live signal feed</h2>
-            <div className="feed">
-              {signals.map((s, i) => {
-                const fresh = isFresh(s.first_seen_at);
-                return (
-                  <div key={i} className={`feed-item ${fresh ? "fresh" : ""}`}>
-                    <div className="top">
-                      <span className="ticker">{s.ticker}</span>
-                      <span className="source">{s.source}</span>
-                      {fresh && <span className="badge new">NEW</span>}
-                      <span className="time">{fmtTime(s.first_seen_at)}</span>
+        {summary.length > 0 && (
+          <div className="dual-pane">
+            <div className="pane-main">
+              <h2>Watchlist · sentiment ring (last hour)</h2>
+              <div className="grid">
+                {summary.map((t) => {
+                  const s = sentiments[t.ticker];
+                  const border = s ? sentimentBorder(s.score) : "var(--border)";
+                  return (
+                    <div
+                      key={t.ticker}
+                      className="card"
+                      style={{ borderColor: border, boxShadow: `0 0 0 1px ${border}` }}
+                    >
+                      <div className="ticker-row">
+                        <span className="ticker">{t.ticker}</span>
+                        <span className={`sentiment-chip ${s && s.score > 0 ? "pos" : s && s.score < 0 ? "neg" : ""}`}>
+                          {sentimentLabel(s)}
+                        </span>
+                      </div>
+                      <div className="stat-row">
+                        <div className="stat">
+                          <div className={`v ${Number(t.fresh_1h) > 0 ? "hot" : ""}`}>{t.fresh_1h}</div>
+                          <div className="l">5 min</div>
+                        </div>
+                        <div className="stat">
+                          <div className="v">{t.fresh_24h}</div>
+                          <div className="l">24h</div>
+                        </div>
+                        <div className="stat">
+                          <div className="v">{t.sources}</div>
+                          <div className="l">srcs</div>
+                        </div>
+                      </div>
+                      <div className="subtle" style={{ marginTop: 8, fontSize: 11 }}>
+                        latest: {t.latest ? fmtTime(t.latest) : "—"}
+                      </div>
+                      <UnlockButton ticker={t.ticker} />
                     </div>
-                    <div className="headline">
-                      {s.url ? <a href={s.url} target="_blank" rel="noreferrer">{s.headline}</a> : s.headline}
+                  );
+                })}
+              </div>
+
+              <h2>Live signal feed</h2>
+              <div className="feed">
+                {signals.map((s, i) => {
+                  const fresh = isFresh(s.first_seen_at);
+                  return (
+                    <div key={i} className={`feed-item ${fresh ? "fresh" : ""}`}>
+                      <div className="top">
+                        <span className="ticker">{s.ticker}</span>
+                        <span className="source">{s.source}</span>
+                        {fresh && <span className="badge new">NEW</span>}
+                        <span className="time">{fmtTime(s.first_seen_at)}</span>
+                      </div>
+                      <div className="headline">
+                        {s.url ? <a href={s.url} target="_blank" rel="noreferrer">{s.headline}</a> : s.headline}
+                      </div>
+                      {s.summary && <div className="summary">{s.summary.slice(0, 240)}{s.summary.length > 240 ? "…" : ""}</div>}
                     </div>
-                    {s.summary && <div className="summary">{s.summary.slice(0, 280)}{s.summary.length > 280 ? "…" : ""}</div>}
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </>
+
+            <aside className="pane-side">
+              <h2 className="reddit-header">
+                <span className="dot-live" /> Reddit live · last 30 min
+                <span className="reddit-count">{redditSignals.length}</span>
+              </h2>
+              <div className="reddit-feed">
+                {redditSignals.length === 0 ? (
+                  <div className="reddit-empty">No Reddit signals in the last 30 min. Worker polls every 15s.</div>
+                ) : (
+                  redditSignals.map((s, i) => (
+                    <div key={i} className="reddit-item">
+                      <div className="reddit-top">
+                        <span className="ticker">{s.ticker}</span>
+                        <span className="reddit-time">{fmtTimeSeconds(s.first_seen_at)}</span>
+                      </div>
+                      <div className="reddit-headline">
+                        {s.url ? <a href={s.url} target="_blank" rel="noreferrer">{s.headline}</a> : s.headline}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </aside>
+          </div>
         )}
       </main>
     </>
